@@ -1,0 +1,6 @@
+- Further cleanup of the source repository.
+- Further improvement of the documentation layout
+- Further configuration and compilation options and better feature selection
+- Implement more complete c/c++ standard
+- arm/riscv/esp32 platform testing, embedded interop does only currently work on x86/x64. it would be a choice to only support libffi on those platforms
+- Migrate the interpreter to pure c, allthou there will be big hurdles to do so
