@@ -1,12 +1,15 @@
 cmake_minimum_required(VERSION 3.16)
-project(UndercEmbedExample VERSION 1.5.0 LANGUAGES CXX)
+project(UndercEmbedExample VERSION 1.5.3 LANGUAGES CXX)
 include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 98)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 
-foreach(UNDERC_PREFIX IN LISTS CMAKE_PREFIX_PATH)
+# Search every prefix the caller might point us at for the installed
+# FindUnderc.cmake: entries on CMAKE_PREFIX_PATH, and the install prefix itself.
+set(_UNDERC_SEARCH_PREFIXES ${CMAKE_PREFIX_PATH} "${CMAKE_INSTALL_PREFIX}")
+foreach(UNDERC_PREFIX IN LISTS _UNDERC_SEARCH_PREFIXES)
     list(APPEND CMAKE_MODULE_PATH
         "${UNDERC_PREFIX}/${CMAKE_INSTALL_LIBDIR}/cmake/Underc"
         "${UNDERC_PREFIX}/lib/cmake/Underc"

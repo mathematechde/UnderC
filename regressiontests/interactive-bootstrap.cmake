@@ -23,7 +23,7 @@ if(NOT bootstrap_log MATCHES "interactive resource bootstrap loaded")
 endif()
 if(NOT bootstrap_log MATCHES "Quit session")
     message(FATAL_ERROR
-        "interactive bootstrap did not load uclresource/help.txt:\n${bootstrap_log}")
+        "interactive bootstrap did not show the compiled-in #help text:\n${bootstrap_log}")
 endif()
 if(bootstrap_log MATCHES "Cannot find 'string'" OR
         bootstrap_log MATCHES "Cannot open defs.h")
@@ -47,5 +47,5 @@ if(NOT command_help_result EQUAL 0)
 endif()
 if(NOT command_help_log MATCHES "Override UC_HOME")
     message(FATAL_ERROR
-        "--help did not load uclresource/cmd-help.txt:\n${command_help_log}")
+        "--help did not show the compiled-in command-line help text:\n${command_help_log}")
 endif()

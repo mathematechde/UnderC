@@ -1,17 +1,37 @@
-# UnderC 1.5.0
+# UnderC 1.5.3
 
-UnderC is an interactive C and C++ interpreter by Steve Donovan (https://github.com/stevedonovan).
-I hereby want to thank the initial developers for their amazing work!
-It parses source, compiles it to an internal p-code instruction stream, and executes that
-stream immediately. Version 1.5.0 builds with current GCC/Clang and MSVC
-toolchains, CMake, libffi, and 64-bit hosts.
-Previous modifications where done by https://github.com/antirez
-
-Optional Libffi can be downloaded from github.com/libffi/libffi or https://github.com/mathematechde/libffi for cmake support.
-
+## Credits
+Initial work by Steve Donovan (https://github.com/stevedonovan).
+Previous modifications where done by https://github.com/antirez, https://github.com/brynne8
 1.3.0-current modifications where done by Louis Höfler (https://github.com/mathematechde, www.mathematech.de)
+I hereby want to thank the initial developers for their amazing work!
 
 See LICENSE for license.
+
+## Motivation
+ - In the age of software that gets bloatet, working as a single developer got more harder. UnderC is a self contained library, able to be implemented by a single developer.
+ - Big software companies have resouces for 100 developers, therefore software can only be maintained by a large ammount of developers. While complex software is the way to go for a use one for everything approach, it also has a big implementation complexity.
+ - C++ is a hated and loved language but it shines in it's design philosophy for architecture compatibility compared to features.
+ - Disabling features for a broader compatibility layer, making it able to be run on more SoC devices.
+
+## Roadmap
+- Further improvement of the api, seperating the library and consumers
+- Further cleanup of the source repository.
+- Further improvement of the build process. Using venv and a bootstrap underc removing cmake dependency alltogether.
+- Further configuration and compilation options and better feature selection
+- Implement more complete c/c++ standard
+- arm/riscv/esp32 platform testing, embedded interop does only currently work on x86/x64. It would be a choice to only support libffi on those platforms. On esp32 you still need dram module.
+- Migrate the interpreter to pure c, allthou there will be big hurdles to do so
+
+## Alternatives
+ - cling https://github.com/root-project/cling
+ - cint https://github.com/kaisereagle/cint
+
+## Overview
+UnderC is an interactive C and C++ interpreter,
+it parses source, compiles it to an internal p-code instruction stream, and executes that
+stream immediately. Version 1.5.3 builds with current GCC/Clang and MSVC
+toolchains, CMake, libffi, and 64-bit hosts.
 
 ## Language support
 
@@ -34,8 +54,13 @@ remain reserved even when their semantics are outside this dialect.
 - Interactive statement and expression evaluation with type-aware result
   display.
 - Automatic interactive loading of the bundled class library from
-  `$UC_HOME/uclresource/defs.h`, with a working-directory `defs.h` available
+  `$UC_HOME/lib/uclr/defs.h`, with a working-directory `defs.h` available
   as a local override.
+- Compiled-in interactive (`#help`) and command-line (`--help`) help text, so
+  no resource files are read at run time.
+- A C embedding API, `uc_set_home_dir()`, that lets a host application point
+  the interpreter at its runtime tree; the OS-specific logic that locates that
+  tree lives in the host. `ucc` derives it from its own executable path.
 - Source-file loading, unloading, cleaning, and reloading.
 - Path-qualified source loads derive synthetic module-initializer names from
   the basename, without retaining the final directory separator.
@@ -69,6 +94,10 @@ remain reserved even when their semantics are outside this dialect.
   checking, and array-range checking.
 - A C-compatible embedding API for live, two-way bindings between host scalar
   variables and interpreted names, plus reflection and native import APIs.
+- Three installed consumers of the interpreter package: the `ucc` command-line
+  front end, the `venv` virtual-environment launcher whose `.cvc` configuration
+  files are C++ run by the embedded interpreter, and the `embed` binding
+  example.
 - Checked scalar native-call argument-slot marshalling for fixed and variadic
   libffi calls, including bool and enum constants in multi-argument calls.
 - Aggregate return values from imported natives, resolved through the import
@@ -91,14 +120,19 @@ remain reserved even when their semantics are outside this dialect.
 
 ## Requirements and build
 
-The source tree now builds the interpreter engine as an installable library and
-the command-line interface as a separate consumer. It requires CMake 3.16 or
+The source tree builds the interpreter engine as an installable library, and
+the `ucc` command-line interface, the `venv` launcher, and the `embed` example
+as separate consumers of the installed package. It requires CMake 3.16 or
 newer, a compiler with GNU C++98 support, and libffi on every host whose
-native-call path needs it. Readline and curses
+native-call path needs it. The `venv` consumer additionally needs a C11 and a
+C++14 compiler (its launcher core is plain C; one bridge file is C++). Readline
+and curses
 development packages are used by default on Unix; on Windows `UCL_USE_READLINE`
 defaults to `OFF` and neither package is needed. GNU Bison (with its `yacc`
 mode) is required only when the pre-generated parser under `src/gen` is absent;
 a source tree that ships those files builds without bison or yacc installed.
+
+Optional Libffi can be downloaded from github.com/libffi/libffi or https://github.com/mathematechde/libffi for cmake support.
 
 Build, install, and consume the default static library with:
 
@@ -116,7 +150,10 @@ cmake --build build-cli --target install
 This installs `libunderc`, its CMake package support, the consumer API in
 `include/underc`, and the interpreted library in `include/underc/uclstl`, then
 installs `ucc`. Compiler-private headers from the source tree are not
-installed. To build and consume the shared library instead:
+installed. The CLI locates the installed `FindUnderc.cmake` through either
+`CMAKE_PREFIX_PATH` or `CMAKE_INSTALL_PREFIX`, so pointing only the install
+prefix at the interpreter installation is enough. To build and consume the
+shared library instead:
 
 ```sh
 cmake -S src -B build-lib-shared -DUCL_SHARED=ON \
@@ -184,6 +221,12 @@ cmake -G "NMake Makefiles" -B out-cmake-vs2026-nmake-x64r -S ./src ^
 cmake --build out-cmake-vs2026-nmake-x64r
 cmake --build out-cmake-vs2026-nmake-x64r --target install
 ```
+
+`. .\build-cmake-install.ps1` runs the full sequence from an already-set-up
+developer PowerShell: it configures and builds `src/`, then the `cli/` and
+`venv/` consumers, and installs `underc.lib`, `ucc.exe`, and `venv.exe` under
+one prefix (`$env:DEP_DIR\underc-vc-x64r`), with libffi taken from
+`$env:DEP_DIR\libffi-380-vc-x64r`.
 
 The Windows build does not use `pkg-config`. libffi is located with
 `find_path`/`find_library` from `CMAKE_PREFIX_PATH`, which must point at a
@@ -292,21 +335,8 @@ VM-width object model. The sources can also be passed directly to an installed
 public headers alone, without the library's own compile definitions, and
 checks that the VM word and the aggregate alignment rule match the host.
 
-### Bytecode optimization
-
-Use `-O0`, `-O1`, `-O2`, or `-O3` before the source-file argument to select
-the bytecode optimization level. The default is `-O0`.
-
-- `-O0` disables bytecode optimization.
-- `-O1` applies local stack and redundant-operation peepholes.
-- `-O2` adds integer constant folding and unary simplification.
-- `-O3` adds algebraic strength reduction, jump threading, redundant-jump
-  removal, and one-instruction function inlining.
-
-The optimizer is built into UnderC and has no additional runtime dependency.
-It follows the staged peephole, constant-folding, and control-flow reduction
-approach used by V8's interpreter while adapting the passes to UnderC's
-stack-based p-code and stable instruction-offset requirements.
+The interpreter has a built-in, staged bytecode optimizer selected with the
+`-O0`..`-O3` command-line levels; see [`cli/README.md`](cli/README.md#bytecode-optimization).
 
 ### Embedding
 
@@ -340,180 +370,40 @@ UC_HOME="$PWD" build-embed/underc-embed
 The example prints the initial and changed numeric values, followed by
 `Hello from underc`.
 
-### Examples
+## Runtime layout and path discovery
 
-The `examples/` directory contains small applications that run directly with
-the command-line interpreter. The calculator accepts one quoted mathematical
-expression and prints its value:
+At run time UnderC reads its interpreted include tree from
+`$UC_HOME/include/underc/uclstl`, the self-import manifest from
+`$UC_HOME/lib/uclr/self.imp`, and the default interactive prelude from
+`$UC_HOME/lib/uclr/defs.h`. The help text shown by `#help` and `--help` is
+compiled into the library and needs no file.
 
-```sh
-UC_HOME="$PWD" build-cli/ucc examples/uccalc.cpp "2 * (3 + 4)"
-```
+`UC_HOME` is a single `$PREFIX` that contains `bin/`, `include/`, and `lib/`.
+A host application supplies it by calling `uc_set_home_dir("<prefix>")` before
+`uc_init()` or `uc_main()`. The `UC_HOME` environment variable and the `-H`
+option still override that value. The library contains no code that inspects
+the running executable's location; the host decides where runtime files come
+from. `ucc` implements the common case: it resolves its own path
+(`$PREFIX/bin/ucc`), strips `bin/ucc`, and passes `$PREFIX` to
+`uc_set_home_dir()`.
 
-`uccalc.cpp` supports floating-point `+`, `-`, `*`, `/`, right-associative
-`^`, parentheses, and unary signs. `tkgui.c` demonstrates dynamic Tcl/Tk
-imports by opening a window with a button that closes it:
+## Consumers
 
-```sh
-UC_HOME="$PWD" build-cli/ucc examples/tkgui.c
-```
+Running `ucc`, its command-line options, the interactive `#` command set, the
+`-O0`..`-O3` bytecode optimization levels, and the runnable programs under
+`examples/` are documented in [`cli/README.md`](cli/README.md). The `venv`
+launcher is documented in [`venv/README.md`](venv/README.md).
 
-The GUI example requires Tcl and Tk shared libraries discoverable as
-`libtcl.so` and `libtk.so`, plus a graphical display.
-
-Native-import sources live in `examples/import/`. Native imports
-have two parts: a host compiler produces a `.so` or `.dll`, and UnderC parses
-the matching declarations in a header bracketed by `#lib`. The native library
-must export the exact symbols requested by those declarations. C++ imports are
-ABI-specific, so build the library with a compiler compatible with the symbol
-mangling expected by the UnderC build.
-
-On Linux, the following commands build the two libraries used by `import1.h`,
-show their exported symbols, and run the value-import smoke example. Run them
-from the repository root:
-
-```sh
-g++ -std=gnu++98 -fPIC -fkeep-inline-functions -shared \
-  examples/import/mstring.cpp -o examples/import/libmstring.so
-g++ -std=gnu++98 -fPIC -fkeep-inline-functions -shared \
-  examples/import/import1.cpp examples/import/mstring.cpp \
-  -o examples/import/libimport1.so
-
-nm -D --defined-only examples/import/libimport1.so | \
-  grep -E '_Z3addii|_Z3sumdd|FatString'
-nm -D --defined-only examples/import/libimport1.so | c++filt | \
-  grep -E 'add\(|sum\(|FatString'
-
-UC_HOME="$PWD" build-cli/ucc examples/import/import1-run.cpp
-```
-
-The first `nm` command displays the actual mangled ELF symbols, including
-`_Z3addii` and `_Z3sumdd`. Piping through `c++filt` displays their readable
-forms, `add(int, int)` and `sum(double, double)`. The program should print
-`add=42 sum-ok=1`. If UnderC reports `cannot link to`, use `nm` to check that
-the requested mangled symbol is present in the library.
-
-Other Linux examples can be built in the same way:
-
-```sh
-g++ -std=gnu++98 -fPIC -fkeep-inline-functions -shared \
-  examples/import/import2.cpp -o examples/import/libimport2.so
-g++ -std=gnu++98 -fPIC -fkeep-inline-functions -shared \
-  examples/import/import3.cpp -o examples/import/libimport3.so
-g++ -std=gnu++98 -fPIC -fkeep-inline-functions -shared \
-  examples/import/import4.cpp -o examples/import/libimport4.so
-g++ -std=gnu++98 -fPIC -fkeep-inline-functions -shared \
-  examples/import/import5.cpp -o examples/import/libimport5.so
-nm -D --defined-only examples/import/libimport5.so | c++filt
-```
-
-With the Microsoft command-line compiler, open a Developer Command Prompt and
-run these commands from the repository root. The DLLs are written to the root
-because the Windows branches in `mstring.h` and `import1.h` load them by bare
-filename:
-
-```bat
-cl /nologo /EHsc /LD examples\import\mstring.cpp /link /OUT:mstring.dll
-cl /nologo /EHsc /LD examples\import\import1.cpp ^
-  examples\import\mstring.cpp /link /OUT:import1.dll
-dumpbin /exports import1.dll
-set UC_HOME=%CD%
-build-cli\ucc.exe examples\import\import1-run.cpp
-```
-
-MinGW uses the same source files and can create DLLs with `g++`:
-
-```sh
-g++ -std=gnu++98 -fkeep-inline-functions -shared \
-  examples/import/mstring.cpp -o mstring.dll
-g++ -std=gnu++98 -fkeep-inline-functions -shared \
-  examples/import/import1.cpp examples/import/mstring.cpp -o import1.dll
-nm -g --defined-only import1.dll | c++filt
-```
-
-The other `.cpp` files in that directory are native shared-library sources,
-not standalone interpreted programs. `-fkeep-inline-functions` retains the
-inline symbols described by their interpreter-side class declarations.
-
-## Running
-
-Set `UC_HOME` to the repository root so UnderC can find its default
-`include/underc/uclstl`, `lib/`, and `uclresource/` trees:
-
-```sh
-UC_HOME="$PWD" build-cli/ucc
-UC_HOME="$PWD" build-cli/ucc program.cpp argument1 argument2
-```
-
-With no source-file argument, `ucc` starts interactively. It first checks the
-working directory for an optional `defs.h`; otherwise it loads
-`$UC_HOME/uclresource/defs.h`, which imports `classlib.h` and the `std`
-namespace. Interactive and command-line help are loaded from the same resource
-directory.
-
-Useful command-line options include:
-
-- `-H path`: override `UC_HOME`.
-- `-I path`: add an include directory.
-- `-D name=value`: define a macro.
-- `-r path`: change directory before running.
-- `-i`: force interactive mode.
-- `-P`: enable pointer checking.
-- `-R`: enable array range checking.
-- `-F`: attempt small-function inlining.
-- `-T`: prefer typedef names in diagnostics.
-- `-W`: suppress dynamic-link warnings.
-- `-v`: print the version.
-- `--help`: show command-line help.
-
-At the interactive prompt, `#help` displays all commands. The principal ones
-are `#l file` (load or reload), `#r args...` (run the loaded `main`), `#q`
-(quit), `#ql` (quit and write a dated log), `#cd`/`#pwd`, `#x command`
-(execute a shell command), and `#lib library [import-file]` (begin importing a
-native library; use bare `#lib` to finish). `#pragma dlink` is the source-level
-equivalent of `#lib`.
-
-Inspection and debugging commands include `#v`/`#d`/`#lv` (symbols and
-variables), `#types`, `#funs`, `#mod`, `#u` (disassemble), `#b`/`#bs`/`#gt`
-(breakpoints), `#ff` (select a frame), `#s` (stop), and `#rm` (remove a symbol
-or program). `#alias` defines command aliases and `#mc` clears macros and the
-global namespace.
-
-`#opt` accepts option letters followed by `+` or `-`: `o` automatic
-disassembly, `t` function tracing, `v` verbose mode, `s` strict conversions,
-`p` pointer checks, `a` access control, `C` C mode, `T` typedef names in
-diagnostics, and `L` suppressed link errors.
-
-### Bundled interpreted library
-
-The default environment exposes common math, conversion, string, memory,
-formatted-I/O, file-I/O, process-pipe, and allocation functions. Interpreted
-programs call `popen` and `pclose` portably; the host bridge uses POSIX
-`popen`/`pclose` on Linux and `_popen`/`_pclose` on Windows. The bundled
-`stdio.h` defines `SEEK_SET`, `SEEK_CUR`, and `SEEK_END`; `stdlib.h` exposes
-`getenv`, `system`, `_gcvt`, and callback-capable `atexit`; `io.h` exposes
-`_access` through a portable host bridge; `string.h` defines `size_t` itself
-so it can be included on its own; and
-`uc_except.h` exposes `RangeError`. The bundled headers also add compact
-`string`, stream, `list`, `vector`, and `map` implementations, regular
-expressions, directory traversal, timers, exception helpers, persistence and
-reflection helpers. These are compact implementations for UnderC programs,
-not a complete or conforming standard library. See
-[LANGUAGE.md](LANGUAGE.md) for the precise language boundary.
-
-Native C functions can be imported after `#lib` by declaring `extern "C"`
-prototypes; the examples in `examples/import/` show the declarations and
-import files. The public `<underc/ucdl.h>` API provides
-interpreter lifecycle, evaluation, imports, compilation, and live variable
-binding; `<underc/ucri.h>` exposes lower-level symbols, types, calls, tracing,
-and persistence.
-Its instruction record uses a pointer-width operand and matches runtime
-instructions in runnable builds; it no longer exposes a packed 22-bit operand.
-New clients should use `XFunction::instruction_count()` and
-`XFunction::instruction_at()` to obtain versioned `XInstructionInfo`
-snapshots instead of casting runtime instruction storage.
-UCRI self-import uses the generated `UC3 AUTO` manifest, with runtime ABI
-selection and symbol resolution instead of fixed executable addresses.
+The public consumer API is split across `<underc/ucdl.h>` (interpreter
+lifecycle, evaluation, imports, compilation, and live variable binding) and
+`<underc/ucri.h>` (lower-level symbols, types, calls, tracing, and
+persistence). The UCRI instruction record uses a pointer-width operand and
+matches runtime instructions in runnable builds; it no longer exposes a packed
+22-bit operand. New clients should use `XFunction::instruction_count()` and
+`XFunction::instruction_at()` to obtain versioned `XInstructionInfo` snapshots
+instead of casting runtime instruction storage. UCRI self-import uses the
+generated `UC3 AUTO` manifest, with runtime ABI selection and symbol
+resolution instead of fixed executable addresses.
 
 ## Project layout
 
@@ -522,7 +412,11 @@ selection and symbol resolution instead of fixed executable addresses.
 - `src/build/`: parser grammar, self-import generator, and build support.
 - `src/gen/`: cached bison/yacc parser output (`tparser.cpp`, `tparser.h`) used
   when present so builds need no bison or yacc.
-- `cli/`: standalone `ucc` command-line front end and consumer CMake project.
+- `cli/`: standalone `ucc` command-line front end and consumer CMake project;
+  see [`cli/README.md`](cli/README.md).
+- `venv/`: cross-platform virtual-environment process launcher that embeds the
+  interpreter and runs `.cvc` C++ configuration files; consumer CMake project,
+  see [`venv/README.md`](venv/README.md).
 - `embed/`: standalone host-variable binding example and consumer CMake project.
 - `regressiontests/`: permanent language, VM, ABI, and migration regression
   sources.
@@ -532,14 +426,72 @@ selection and symbol resolution instead of fixed executable addresses.
 - `include/underc/uclstl/`: pocket STL, C library declarations, and support
   headers made available to interpreted programs through the default include
   search path.
-- `lib/`: bundled implementation support and generated `uclr/self.imp` manifest.
-- `uclresource/`: default interactive definitions and command help text.
+- `lib/`: bundled implementation support, the generated `uclr/self.imp`
+  manifest, and `uclr/defs.h`, the default interactive prelude loaded from
+  `$UC_HOME/lib/uclr/defs.h` at run time (installed to `<prefix>/lib/uclr`).
+- `src/uclr/`: source of `defs.h`; CMake keeps `lib/uclr/defs.h` in sync and
+  installs it.
 - `verify/`: language verification programs.
 - `VERSIONS.md`: release history and feature deltas.
 - `LANGUAGE.md`: audited interpreted-language scope.
 - `MISSMATCH.md`: claims from the old documentation that do not match the
   maintained implementation.
 - `LICENSE`: GNU Library General Public License version 2.
+
+## Interactive command reference
+
+This is the text shown by `#help` at the interactive prompt. It is compiled
+into the library from the block below (CMake extracts the lines between the
+`GENERATE_HELP_H_CONTENT_CLI` markers into `help.h`), so editing it here changes
+the built-in help. `#help <name>` prints the entry for one command.
+
+<!-- GENERATE_HELP_H_CONTENT_CLI_START -->
+```text
+UnderC Command Summary (available with #help)
+#q     Quit session
+#ql    Quit session, writing log file
+  The temp file is of the form <month><day>-<hour><min>
+#log   Write to <log file>
+  Currently only available in the Win32 GUI version (WCON)
+#cd    Change current directory <dir>
+#pwd   Show current directory
+#l     Load <file>
+#r     Run current program
+  This must have previously been loaded with #l
+#lib   Load <library> <import-file>
+  Any class declarations and function prototypes are then imported from the
+  specified shared library or DLL. An optional import file can be used when
+  linking DLLs without symbolic information. To end importing, say #lib with
+  no parameter. This is the same as #pragma dlink <file>
+#alias Create an alias for a command
+  Aliases are defined like #define macros, but only substitute the first token
+  on the line and pick up space-separated arguments. For example,
+    #alias cd(x) @cd x @pwd
+    #alias D(obj,y,z) obj->set(y,z);
+    #alias L(f) @include #f
+#opt   Set options, e.g. #opt t+ v+
+  o- auto disassemble        t- function trace
+  v- verbose mode            s- strict mode (no implicit bool conversions)
+  p- pointer check           a- access control
+  c- strip prompt when copying (WCON only)
+  C- C mode                  T- use typedef names if possible
+  L- suppress link errors
+#lv    Display all local variables
+#d     Display variable
+#v     Information on variable or function
+#u     Disassemble function
+#rm    Remove symbol or program (use 'main' to remove the program)
+#s     Stop program
+#mod   List modules, or position of a function
+#types List types <pat>, wildcards pat* or *pat
+#funs  List functions <pat>, wildcards pat* or *pat
+#gt    Set temporary breakpoint at <file> <lineno>
+#b     Set breakpoint at <file> <lineno>
+#bs    List breakpoints in <file>
+#ff    Set frame <n>
+#mc    Clear all macros (also cleans out the global namespace)
+```
+<!-- GENERATE_HELP_H_CONTENT_CLI_END -->
 
 ## Portability notes
 

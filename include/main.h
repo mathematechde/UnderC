@@ -14,5 +14,8 @@ namespace Main {
  int interactive_loop();
  char *uc_exec_name();
  string uc_lib_dir();
+ // *add 1.5.3 host-configured runtime prefix ($PREFIX with bin/ include/ lib/)
+ void set_home_dir(const string& path);
+ const string& configured_home_dir();
 };
 

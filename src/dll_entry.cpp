@@ -116,6 +116,11 @@ CEXPORT int XAPI uc_main(int argc, char **argv)
   return pgm_main(argc,argv);
 }
 
+CEXPORT void XAPI uc_set_home_dir(const char *path)
+{
+  Main::set_home_dir(path ? string(path) : string());
+}
+
 CEXPORT void XAPI uc_finis()
 {
 	Main::finalize();

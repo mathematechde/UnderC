@@ -3,6 +3,41 @@
 Each entry summarizes the maintained feature delta. Historical version entries
 from the complete earlier history are retained below.
 
+## 1.5.3 — 2026-09-07
+
+- Compiled the `#help` and `--help` text into the library. CMake generates
+  `help.h` from the `GENERATE_HELP_H_CONTENT_CLI_START` /
+  `GENERATE_HELP_H_CONTENT_CLI_END` marked blocks in `README.md` and
+  `cli/README.md`; `show_help()` scans that string and no longer opens a file.
+- Merged `uclresource/help.txt` and `uclresource/cmd-help.txt` into those
+  README blocks and deleted both files and the loader code.
+- Removed `uclresource/`. `defs.h` now lives at `src/uclr/defs.h`, is installed
+  to `<prefix>/lib/uclr/defs.h`, kept in sync at `lib/uclr/defs.h` for the
+  in-tree `UC_HOME`, and loaded from `<UC_HOME>/lib/uclr/defs.h` at run time.
+- Added `uc_set_home_dir()` to `<underc/ucdl.h>`: a host application sets the
+  runtime `$PREFIX` (`bin/`, `include/`, `lib/`) before `uc_init()` /
+  `uc_main()`. `UC_HOME` and `-H` still override it. The OS-specific logic that
+  locates the prefix stays in the host.
+- `ucc` now finds its own runtime tree: it resolves its executable path,
+  strips `bin/ucc`, and calls `uc_set_home_dir()`. An installed `ucc` needs no
+  environment. The library keeps no `argv[0]`-inspection code.
+- Bumped the library, CLI, embed, and venv projects to 1.5.3 and updated the
+  `public-header-layout` regression and the current-feature documentation. The
+  Windows x64 suite passes 50 of 51 tests; `ucri-self-import` remains a
+  GCC/Clang-only facility.
+
+## 1.5.1 — 2026-09-07
+
+- Fixed the CMake CLI build (`build-cmake-install.ps1`) failing with
+  `No "FindUnderc.cmake" found in CMAKE_MODULE_PATH`. `cli/CMakeLists.txt`
+  only extended `CMAKE_MODULE_PATH` with prefixes on `CMAKE_PREFIX_PATH`, but
+  the install script configures the CLI with just `CMAKE_INSTALL_PREFIX`
+  pointing at the interpreter installation. The install prefix is now searched
+  as well, so the installed `FindUnderc.cmake` and `UndercTargets.cmake` are
+  found. `embed/CMakeLists.txt` got the same fix.
+- Incremented the library, CLI, and embed project versions to 1.5.1 and updated
+  the current-feature documentation.
+
 ## 1.5.0 — 2026-08-31
 
 - Fixed local variable allocation on 64-bit hosts: the frame is addressed in

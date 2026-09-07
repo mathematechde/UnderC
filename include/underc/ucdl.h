@@ -29,7 +29,13 @@ typedef void *Handle;
 #endif
 
 XAPI int    STD uc_init(char *defs_file, int use_defs);
-XAPI int    STD uc_main(int argc, char **argv);  
+XAPI int    STD uc_main(int argc, char **argv);
+/* Tell the library where its runtime tree lives: <path> is a $PREFIX that
+ * contains bin/, include/ and lib/ subdirectories.  Call before uc_init() or
+ * uc_main().  UC_HOME and the -H option still override this.  The OS-specific
+ * logic that locates the prefix (e.g. from the executable path) belongs in the
+ * host application, not here. */
+XAPI void   STD uc_set_home_dir(const char *path);
 XAPI void   STD uc_finis();
 XAPI int    STD uc_include(char *path);
 XAPI void   STD uc_interactive_loop();

@@ -3,6 +3,150 @@
 This file records modernization work performed on this source tree. Consolidated
 release information is in `VERSIONS.md`.
 
+## UnderC 1.5.3 compiled-in help, resource relocation, runtime path API (2026-09-07)
+
+The interpreter no longer reads any text resource file at run time, the
+remaining resource directory moved out of the repository root, and a host
+application now tells the library where its runtime tree lives instead of the
+library guessing from `argv[0]`.
+
+Help text:
+
+- `#help` and `--help` text is compiled into the library. CMake generates
+  `help.h` (`src/build/generate-help-h.cmake`, wired into `src/CMakeLists.txt`
+  as a custom command) from the blocks between the
+  `GENERATE_HELP_H_CONTENT_CLI_START` / `GENERATE_HELP_H_CONTENT_CLI_END`
+  markers in `README.md` (interactive command summary) and `cli/README.md`
+  (command-line option summary). The Markdown code fence inside each block is
+  stripped; only the marked region is used.
+- `show_help()` in `src/main.cpp` now scans a compiled-in string rather than
+  opening a file; the file-reading path and the `ifstream` it used are gone.
+- The content of `uclresource/help.txt` and `uclresource/cmd-help.txt` was
+  merged into the two README marker blocks, and both `.txt` files were deleted.
+
+Resource relocation:
+
+- `uclresource/` was removed. `defs.h` now lives at `src/uclr/defs.h`; CMake
+  copies it to `lib/uclr/defs.h` for the in-tree `UC_HOME` and installs it to
+  `<prefix>/lib/uclr/defs.h`.
+- The default interactive prelude is loaded from `<UC_HOME>/lib/uclr/defs.h`
+  (`uc_resource_file()` in `src/main.cpp` retargeted from `uclresource/` to
+  `lib/uclr/`).
+
+Runtime path discovery:
+
+- Added `uc_set_home_dir(const char *)` to `<underc/ucdl.h>` (implemented in
+  `src/dll_entry.cpp`, backed by `Main::set_home_dir` /
+  `Main::configured_home_dir` in `src/main.cpp` and `include/main.h`). A host
+  calls it before `uc_init()` / `uc_main()` to set the runtime `$PREFIX`
+  (`bin/`, `include/`, `lib/`). `UC_HOME` and `-H` still override it.
+- The library contains no OS-specific "where am I" logic. `cli/main.cpp` now
+  resolves the `ucc` executable path (`GetModuleFileNameA` on Windows,
+  `/proc/self/exe` on Linux, `_NSGetExecutablePath` on macOS), strips
+  `bin/ucc`, and passes the prefix to `uc_set_home_dir()`. An installed `ucc`
+  in `<prefix>/bin` now needs no environment.
+
+Version and documentation:
+
+- Bumped the library, CLI, embed, and venv CMake projects to 1.5.3 and the
+  `public-header-layout` regression's expected version string.
+- Rewrote the `README.md` runtime/consumer sections (library and embedding
+  only; `ucc` and `venv` usage now only linked, not repeated), added the
+  interactive command reference block, and updated `cli/README.md` running,
+  options, and `--help` sections.
+- `regressiontests/interactive-bootstrap.cmake` messages updated for the
+  compiled-in help; it still asserts `#help` shows `Quit session` and `--help`
+  shows `Override UC_HOME`, now proving the text is compiled in.
+
+Verified: the MSVC/NMake Windows x64 release build passes 50 of 51 tests
+(`ucri-self-import` remains a GCC/Clang-only facility). An installed `ucc` run
+with no `UC_HOME` finds `include/underc/uclstl` and `lib/uclr/defs.h` from its
+own location, `--help` and `#help` print the compiled-in text, and a source
+file runs and prints its output.
+
+## UnderC 1.5.1 venv launcher build integration and CLI doc split (2026-09-07)
+
+The `venv` virtual-environment launcher (renamed from `venv_spawner`) is now a
+first-class consumer of the interpreter package, built and installed by the same
+Windows script as the library and `ucc`.
+
+Build:
+
+- `build-cmake-install.ps1` already invoked `cmake -S venv` as a third stage
+  after `src/` and `cli/`; that stage now succeeds. `venv.exe` installs next to
+  `ucc.exe` under the shared prefix.
+- Removed the `USE_UNDERC` CMake option from `venv/CMakeLists.txt`. The embedded
+  UnderC interpreter is mandatory — a `.cvc` configuration file is C++ run by
+  that interpreter — so the option, the `VENV_USE_UNDERC` compile definition,
+  the `#ifdef VENV_USE_UNDERC` pure-C fallback `main()` in `venv/src/main.c`,
+  and its "rebuild with -DUSE_UNDERC=ON" stub are gone.
+- Reduced `venv/CMakeLists.txt` to the shape of `cli/CMakeLists.txt`: it locates
+  the interpreter only through `find_package(Underc REQUIRED MODULE)` against
+  `CMAKE_PREFIX_PATH` / `CMAKE_INSTALL_PREFIX`. Removed the bespoke
+  `Underc_ROOT` / `$DEP_DIR` / `C:/pkg/dep` hint search, the direct
+  `UndercTargets.cmake` include, the recovery of the prefix from the imported
+  target, the baked-in `VENV_UNDERC_PREFIX` default `UC_HOME`, and the
+  `ffi.dll` copy/install step. UnderC is either on the prefix path or it is
+  not, exactly as for `ucc`.
+- `venv/src/underc_bridge.cpp` now includes `<underc/ucdl.h>` — the installed
+  public header path, reachable through the `Underc::underc` interface include
+  directory — instead of `<ucdl.h>`, which only resolved because the removed
+  CMake code added `<prefix>/include/underc` to the search path.
+- Dropped the `build-time prefix` candidate from `venv`'s `UC_HOME`
+  auto-detection (it was fed by `VENV_UNDERC_PREFIX`); `$UC_HOME`,
+  `$DEP_DIR/underc`, the directory holding `venv`, its parent, and the built-in
+  default remain.
+
+Documentation:
+
+- Added `cli/README.md` and moved the CLI-specific material into it: building
+  `ucc`, running it interactively or on a source file, the command-line
+  options, the interactive `#` command set and `#opt` letters, the
+  `-O0`..`-O3` bytecode-optimization levels, the interpreted environment
+  exposed at the prompt, and the runnable `examples/` (`uccalc.cpp`,
+  `tkgui.c`, and the `examples/import/` native-import walk-throughs).
+- Trimmed `README.md` to the library, embedding, build, and portability
+  material, refreshed the feature list and project layout for the three
+  installed consumers (`ucc`, `venv`, `embed`), and documented that
+  `build-cmake-install.ps1` builds and installs all three under one prefix.
+
+Verified: `. .\build-cmake-install.ps1` configures, builds, and installs
+`underc.lib`, `ucc.exe`, and `venv.exe` on the MSVC/NMake Windows x64
+toolchain, and the installed `venv.exe` runs a `.cvc` configuration through a
+persistent `cmd.exe` shell.
+
+## UnderC 1.5.1 CMake CLI package discovery repair (2026-09-07)
+
+`. .\build-cmake-install.ps1` stopped during the CLI configure step with:
+
+```
+No "FindUnderc.cmake" found in CMAKE_MODULE_PATH
+```
+
+`cli/CMakeLists.txt` locates the interpreter with `find_package(Underc REQUIRED
+MODULE)`. The interpreter's install step writes `FindUnderc.cmake` and
+`UndercTargets.cmake` to `<prefix>/lib/cmake/Underc`, and the CLI adds that
+directory to `CMAKE_MODULE_PATH` by iterating the prefixes on
+`CMAKE_PREFIX_PATH`. `build-cmake-install.ps1` configures the CLI with only
+`-DCMAKE_INSTALL_PREFIX="$env:DEP_DIR\underc-vc-x64r"` and no
+`CMAKE_PREFIX_PATH`, so the loop had nothing to iterate and the module was
+never on the path.
+
+Fix:
+
+- `cli/CMakeLists.txt` now builds its search list from `CMAKE_PREFIX_PATH`
+  *and* `CMAKE_INSTALL_PREFIX`, then appends the `lib/cmake/Underc`,
+  `lib64/cmake/Underc`, and `${CMAKE_INSTALL_LIBDIR}/cmake/Underc`
+  subdirectories of each to `CMAKE_MODULE_PATH`.
+- `embed/CMakeLists.txt` carried the identical latent bug and received the same
+  fix.
+- Bumped the library, CLI, and embed CMake project versions to 1.5.1, and
+  updated the `public-header-layout` regression's expected version string.
+
+The full `build-cmake-install.ps1` run now configures, builds, and installs
+both the static `underc.lib` and `ucc.exe` on the MSVC/NMake Windows x64
+toolchain.
+
 ## UnderC 1.5.0 frame and array allocation repair (2026-09-01)
 
 Investigation of the `vector<string>` crash described in

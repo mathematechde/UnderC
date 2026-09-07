@@ -28,6 +28,7 @@
 #include "hard_except.h"
 #include "main.h"
 #include "config.h"
+#include "help.h"   // generated: UC_HELP_INTERACTIVE / UC_HELP_COMMANDLINE
 #include "loaded_module_list.h"
 
 #ifdef _WCON
@@ -287,38 +288,59 @@ char *get_temp_log()
 // *add 1.2.1 Getting interactive help
 string uc_home_dir(); // forward
 
+// Runtime resource files now live under <UC_HOME>/lib/uclr (installed there as
+// well).  The only remaining one is the default interactive prelude defs.h;
+// the help text is compiled into the interpreter (see help.h).
 static string uc_resource_file(const char* name)
 {
     string resource_dir = uc_home_dir();
     Utils::check_path_end(resource_dir);
-    resource_dir += "uclresource";
+    resource_dir += "lib";
+    Utils::check_path_end(resource_dir);
+    resource_dir += "uclr";
     Utils::check_path_end(resource_dir);
     return resource_dir + name;
 }
 
+// show_help() works over a compiled-in help string (help.h).  Lines beginning
+// with 'marker' are command headers; with no cmd we print just those headers
+// (the summary), otherwise we print the matching header and its following
+// description lines.
+static const char* help_next_line(const char* p, char* line, int sz)
+{
+    int n = 0;
+    while (p[n] && p[n] != '\n') n++;
+    int c = n < sz - 1 ? n : sz - 1;
+    memcpy(line, p, c);
+    line[c] = '\0';
+    if (c > 0 && line[c - 1] == '\r') line[c - 1] = '\0';
+    p += n;
+    if (*p == '\n') p++;
+    return p;
+}
+
 void show_help(const char* help_text, const char* cmd, char marker)
 {
-    char buff[256];
-    string help_file = uc_resource_file(help_text);
-    ifstream in(help_file.c_str(),IOS_IN_FLAGS);
-    if (! in) { cerr << "cannot find " << help_file << endl; return; }
     if (cmd && *cmd == marker) cmd++;
-    while (! in.eof()) {
-      in.getline(buff,sizeof(buff));
-      if (buff[0] == marker) {
-       if (! cmd) cmsg << buff << endl;
-       else {         
-         if (strncmp(cmd,buff+1,strlen(cmd))==0) {
-            buff[0] = ' ';
-            while (buff[0] != marker) {
-                cmsg << buff << endl;
-                in.getline(buff,sizeof(buff));
-            }
-         return;
-         }
-       }
+    if (cmd && *cmd == '\0') cmd = NULL;
+    if (! help_text) return;
+    char line[512];
+    const char* p = help_text;
+    while (*p) {
+      p = help_next_line(p, line, sizeof(line));
+      if (line[0] != marker) continue;
+      if (! cmd) { cmsg << line << endl; continue; }
+      if (strncmp(cmd, line + 1, strlen(cmd)) != 0) continue;
+      cmsg << line << endl;
+      while (*p) {
+        char body[512];
+        const char* q = help_next_line(p, body, sizeof(body));
+        if (body[0] == marker) return;
+        cmsg << body << endl;
+        p = q;
       }
-    }  
+      return;
+    }
 }
 
 // *change 1.2.8 added more control on whether one wants the contents of the parent 
@@ -717,7 +739,7 @@ bool UCTokenStream::user_cmd(string ppd)
 #ifndef UCL_SHARED
   else
   // *add 1.2.1 Interactive Help
-  if (ppd == "help") show_help("help.txt",Input::next_token(true),'#');
+  if (ppd == "help") show_help(UC_HELP_INTERACTIVE,Input::next_token(true),'#');
   else
   if (ppd == "li") Function::lookup(Input::next_token(true))->line_nos()->dump(cmsg);
     // *fix 1.2.1 (Eric) Complain if this command is not recognized
@@ -731,8 +753,19 @@ bool UCTokenStream::user_cmd(string ppd)
 static string mUCDir;
 static char* mPgmName;
 
+// *add 1.5.3 A host application (e.g. ucc) can tell the library where its
+// runtime tree ($PREFIX with bin/ include/ lib/) lives, before uc_main() or
+// uc_init() run.  The OS-specific "where am I" logic stays in the executable.
+// Precedence: this value is the baseline; UC_HOME and -H still override it.
+static string mConfiguredHome;
+
 bool interactive_mode()  { return mInteractiveMode; }
 string uc_home_dir()     { return mUCDir; }
+
+namespace Main {
+  void set_home_dir(const string& path) { mConfiguredHome = path; }
+  const string& configured_home_dir()   { return mConfiguredHome; }
+}
 
 void bail_out()
 {
@@ -902,6 +935,13 @@ bool Main::process_command_line(int& argc, char**& argv)
     if (argv) mUCDir = argv[0];
 #endif
 
+  // *add 1.5.3 a host application may have configured the runtime prefix from
+  // its own binary location; this sits below UC_HOME and -H in precedence.
+  if (Main::configured_home_dir().size() > 0) {
+    inc_path = Main::configured_home_dir().c_str();
+    mUCDir = Main::configured_home_dir();
+  }
+
   char *t;
   if (t=getenv("UC_HOME")) {
     // the value set in the environment overrides the compiled in default
@@ -954,7 +994,7 @@ bool Main::process_command_line(int& argc, char**& argv)
       case '-': 
          if (strcmp(args.get_opt_parameter(),"help")==0)
          {
-             show_help("cmd-help.txt",NULL,'-');
+             show_help(UC_HELP_COMMANDLINE,NULL,'-');
              return false;
          }
       break;

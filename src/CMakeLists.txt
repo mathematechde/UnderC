@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(Underc VERSION 1.5.0 LANGUAGES CXX)
+project(Underc VERSION 1.5.3 LANGUAGES CXX)
 include(GNUInstallDirs)
 include(CTest)
 
@@ -63,13 +63,42 @@ file(MAKE_DIRECTORY "${UNDERC_GENERATED_INCLUDE_DIR}/underc")
 configure_file(version.h.in
     "${UNDERC_GENERATED_INCLUDE_DIR}/underc/version.h" @ONLY)
 
+# The interactive (#help) and command-line (--help) help text is compiled into
+# the interpreter from README.md and cli/README.md instead of being read from
+# resource files at runtime.  Only the text between the
+# GENERATE_HELP_H_CONTENT_CLI markers in each file is used.
+set(UNDERC_HELP_HEADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/help-gen")
+set(UNDERC_HELP_HEADER "${UNDERC_HELP_HEADER_DIR}/help.h")
+set(UNDERC_README_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../README.md")
+set(UNDERC_README_CLI  "${CMAKE_CURRENT_SOURCE_DIR}/../cli/README.md")
+file(MAKE_DIRECTORY "${UNDERC_HELP_HEADER_DIR}")
+add_custom_command(
+    OUTPUT "${UNDERC_HELP_HEADER}"
+    COMMAND "${CMAKE_COMMAND}"
+        "-DREADME_ROOT=${UNDERC_README_ROOT}"
+        "-DREADME_CLI=${UNDERC_README_CLI}"
+        "-DOUTPUT=${UNDERC_HELP_HEADER}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/build/generate-help-h.cmake"
+    DEPENDS "${UNDERC_README_ROOT}" "${UNDERC_README_CLI}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/build/generate-help-h.cmake"
+    COMMENT "Generating compiled-in help text (help.h)"
+    VERBATIM)
+add_custom_target(underc-help-header DEPENDS "${UNDERC_HELP_HEADER}")
+
+# defs.h is the default interactive prelude.  It is installed to lib/uclr and
+# loaded from <UC_HOME>/lib/uclr/defs.h at runtime; keep the in-tree copy under
+# lib/uclr in sync so the repository root works as UC_HOME during development.
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/uclr/defs.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../lib/uclr/defs.h" COPYONLY)
+
 set(UNDERC_SOURCES
     breakpoints.cpp bytecode_optimizer.cpp class.cpp code.cpp common.cpp directcall.cpp dissem.cpp
     engine.cpp errors.cpp ex_vfscanf.cpp expressions.cpp function.cpp
     function_match.cpp hard_except.cpp imports.cpp iostrm.cpp keywords.cpp
     lexer.cpp main.cpp mangle.cpp mstring.cpp operators.cpp os.cpp program.cpp
     subst.cpp table.cpp templates.cpp tokens.cpp types.cpp
-    uc_tokens.cpp ucri.cpp utils.cpp dll_entry.cpp ${UNDERC_PARSER_OUTPUTS})
+    uc_tokens.cpp ucri.cpp utils.cpp dll_entry.cpp ${UNDERC_PARSER_OUTPUTS}
+    ${UNDERC_HELP_HEADER})
 
 if(UNIX AND NOT APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
     enable_language(ASM)
@@ -92,7 +121,9 @@ target_include_directories(underc
     PRIVATE
         "${UNDERC_PUBLIC_INCLUDE_DIR}"
         "${UNDERC_GENERATED_INCLUDE_DIR}/underc"
+        "${UNDERC_HELP_HEADER_DIR}"
         "${UNDERC_PARSER_GEN_DIR}")
+set_source_files_properties(main.cpp PROPERTIES OBJECT_DEPENDS "${UNDERC_HELP_HEADER}")
 target_compile_definitions(underc PRIVATE _CONSOLE _FAKE_IOSTREAM _MSTRING)
 target_compile_definitions(underc PUBLIC UNDERC_VM_BITS=${UNDERC_VM_BITS})
 if(UNDERC_HAS_SYSV_X86_64)
@@ -235,6 +266,9 @@ if(BUILD_TESTING)
     add_executable(underc-load-test
         "${CMAKE_CURRENT_SOURCE_DIR}/../regressiontests/uc-load.cpp")
     target_link_libraries(underc-load-test PRIVATE underc)
+    add_executable(underc-home-dir-api-test
+        "${CMAKE_CURRENT_SOURCE_DIR}/../regressiontests/home-dir-api.cpp")
+    target_link_libraries(underc-home-dir-api-test PRIVATE underc)
     add_executable(underc-native-pocket-string-test
         "${CMAKE_CURRENT_SOURCE_DIR}/../regressiontests/native-pocket-string.cpp")
     add_executable(underc-basename-handling-test
@@ -261,6 +295,10 @@ if(BUILD_TESTING)
         WORKING_DIRECTORY "${UNDERC_TEST_ROOT}"
         ENVIRONMENT "UC_HOME=${UNDERC_TEST_ROOT}"
         PASS_REGULAR_EXPRESSION "Hello from underc" TIMEOUT 15)
+    add_test(NAME home-dir-path-api
+        COMMAND underc-home-dir-api-test "${UNDERC_TEST_ROOT}")
+    set_tests_properties(home-dir-path-api PROPERTIES
+        ENVIRONMENT "UC_HOME=" PASS_REGULAR_EXPRESSION "home-dir-api-ok" TIMEOUT 15)
     add_test(NAME native-pocket-string-api COMMAND underc-native-pocket-string-test)
     set_tests_properties(native-pocket-string-api PROPERTIES
         PASS_REGULAR_EXPRESSION "native-pocket-string-ok" TIMEOUT 15)
@@ -269,7 +307,7 @@ if(BUILD_TESTING)
         PASS_REGULAR_EXPRESSION "basename-handling-ok" TIMEOUT 15)
     add_test(NAME public-header-layout COMMAND underc-public-headers-test)
     set_tests_properties(public-header-layout PROPERTIES
-        PASS_REGULAR_EXPRESSION "public-header-layout=1.5.0" TIMEOUT 15)
+        PASS_REGULAR_EXPRESSION "public-header-layout=1.5.3" TIMEOUT 15)
     add_test(NAME host-abi-width COMMAND underc-host-abi-width-test)
     set_tests_properties(host-abi-width PROPERTIES
         PASS_REGULAR_EXPRESSION "host-abi-width=${UNDERC_HOST_BITS}" TIMEOUT 15)
@@ -438,3 +476,5 @@ install(EXPORT UndercTargets FILE UndercTargets.cmake NAMESPACE Underc::
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindUnderc.cmake"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Underc)
 install(FILES "${UNDERC_SELFIMP_OUTPUT}" DESTINATION ${CMAKE_INSTALL_LIBDIR}/uclr OPTIONAL)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/uclr/defs.h"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/uclr)
