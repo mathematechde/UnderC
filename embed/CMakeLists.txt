@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.16)
 project(UndercEmbedExample VERSION 1.5.3 LANGUAGES CXX)
 include(GNUInstallDirs)
 
-set(CMAKE_CXX_STANDARD 98)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Search every prefix the caller might point us at for the installed
 # FindUnderc.cmake: entries on CMAKE_PREFIX_PATH, and the install prefix itself.

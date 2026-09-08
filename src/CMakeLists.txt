@@ -31,9 +31,9 @@ if(UNDERC_VM_BITS LESS UNDERC_HOST_BITS AND NOT UCL_COMPILE_ONLY_NARROW_VM)
         "UCL_COMPILE_ONLY_NARROW_VM=ON for a non-runnable compile check.")
 endif()
 
-set(CMAKE_CXX_STANDARD 98)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 # Parser sources are generated with bison/yacc from build/parser.y and cached in
 # src/gen.  If the cached files are present they are used verbatim, and bison is
 # neither required nor searched for.  This allows building on systems that have
