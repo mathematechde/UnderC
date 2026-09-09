@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 # CMP0091: drive the MSVC runtime library through MSVC_RUNTIME_LIBRARY, so venv
 # can force /MD to match the shipped Release /MD underc.lib even in Debug.
 cmake_policy(SET CMP0091 NEW)
-project(venv VERSION 1.5.3 LANGUAGES C CXX)
+project(venv VERSION 1.5.4 LANGUAGES C CXX)
 include(GNUInstallDirs)
 
 set(CMAKE_C_STANDARD 11)

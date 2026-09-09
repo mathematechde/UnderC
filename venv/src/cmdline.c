@@ -2,6 +2,7 @@
 
 #include "util.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 static int is_space(char c)

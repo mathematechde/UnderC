@@ -1,4 +1,4 @@
-# UnderC 1.5.3
+# UnderC 1.5.4
 
 ## Credits
 Initial work by Steve Donovan (https://github.com/stevedonovan).
@@ -30,7 +30,7 @@ See LICENSE for license.
 ## Overview
 UnderC is an interactive C and C++ interpreter,
 it parses source, compiles it to an internal p-code instruction stream, and executes that
-stream immediately. Version 1.5.3 builds with current GCC/Clang and MSVC
+stream immediately. Version 1.5.4 builds with current GCC/Clang and MSVC
 toolchains, CMake, libffi, and 64-bit hosts.
 
 ## Language support
@@ -117,6 +117,10 @@ remain reserved even when their semantics are outside this dialect.
   storage, innermost-first catch matching, catch-by-base, and `catch(...)`.
 - A generated, address-free UCRI self-import manifest that resolves symbols in
   the running process and remains valid with PIE, ASLR, and 64-bit pointers.
+- A libffi that can be named directly with `-DLIBFFI_INCLUDE_DIR` and
+  `-DLIBFFI_LIBRARY` on every platform, ahead of the automatic search, and an
+  installed CMake package that records the interpreter's dependencies by file
+  path, so consumers need no pkg-config of their own.
 
 ## Requirements and build
 
@@ -194,6 +198,35 @@ calls. Plain non-union aggregates use generated libffi structure descriptions
 for arguments and returns. Non-trivial C++ objects and aggregates containing
 bit-fields remain pointer/reference-only.
 
+#### Finding libffi
+
+Every platform accepts a libffi named by hand, and an explicitly named libffi
+is used verbatim and never replaced by an automatically discovered copy:
+
+```sh
+cmake -S src -B build-lib \
+  -DLIBFFI_INCLUDE_DIR=/opt/libffi/include \
+  -DLIBFFI_LIBRARY=/opt/libffi/lib/libffi.a
+cmake --build build-lib
+```
+
+Both variables must be given together; giving only one is a configuration
+error. On Unix the automatic search runs when they are not set, in this order:
+a libffi CMake package first (`find_package(libffi CONFIG)`, then
+`find_package(ffi CONFIG)`, since ports differ in both package and target
+name), then `pkg-config`, then a plain `find_path`/`find_library` sweep. All
+three honour `CMAKE_PREFIX_PATH`. A libffi built into its own prefix often installs neither
+a CMake package nor a `.pc` file, and the two variables above are then the way
+to build against it. When nothing is found, the configuration error names all
+three mechanisms and the variables to set. Windows has no `pkg-config`: there
+the same two variables are used, normally filled in by
+`find_path`/`find_library` from `CMAKE_PREFIX_PATH`.
+
+Whichever mechanism finds it, libffi is recorded in the installed
+`UndercTargets.cmake` as the library file itself, so a consumer of the
+installed package links the same libffi without needing that mechanism —
+`pkg-config`, in particular — available in its own project.
+
 A prebuilt libffi carries no architecture marker that `find_library`
 inspects, so CMake link-tests the candidate before accepting it. A libffi that
 cannot be linked by the active toolchain — an x64 package offered to a 32-bit
@@ -203,6 +236,8 @@ host this is a configuration error, because there is no built-in dispatcher to
 fall back on; on a 32-bit host the build warns and uses the built-in 32-bit
 native dispatcher, which handles scalar, pointer, and floating-point calls and
 interpreted callbacks but not variadic natives or by-value aggregates.
+`-DUCL_LIBFFI=OFF` selects the built-in dispatcher outright, and is supported
+on a 64-bit host only for Linux System V x86-64.
 
 `UCL_STRICT_CONVERSIONS` enables migration-oriented conversion warnings, and
 `UCL_SANITIZERS` enables AddressSanitizer and UndefinedBehaviorSanitizer on
@@ -230,7 +265,8 @@ one prefix (`$env:DEP_DIR\underc-vc-x64r`), with libffi taken from
 
 The Windows build does not use `pkg-config`. libffi is located with
 `find_path`/`find_library` from `CMAKE_PREFIX_PATH`, which must point at a
-prebuilt libffi that provides `ffi.h` and an `ffi` or `libffi` import library.
+prebuilt libffi that provides `ffi.h` and an `ffi` or `libffi` import library;
+`-DLIBFFI_INCLUDE_DIR` and `-DLIBFFI_LIBRARY` name it directly instead.
 `UCL_USE_READLINE` defaults to `OFF` here because GNU readline and curses are
 not part of a stock MSVC toolchain; the interpreter uses its plain console
 line editor instead. The `selfimp` target requires `nm` and `awk` and is not

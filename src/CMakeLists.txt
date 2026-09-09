@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(Underc VERSION 1.5.3 LANGUAGES CXX)
+project(Underc VERSION 1.5.4 LANGUAGES CXX)
 include(GNUInstallDirs)
 include(CTest)
 
@@ -138,25 +138,45 @@ endif()
 if(UCL_COMPILE_ONLY_NARROW_VM)
     target_compile_definitions(underc PRIVATE UCL_COMPILE_ONLY_NARROW_VM=1)
 endif()
-# pkg-config is the libffi discovery mechanism on Unix.  On Windows the nmake
-# build (build-cmake-vs2026-nmake-release.bat) has no pkg-config, so locate a
-# prebuilt libffi through CMAKE_PREFIX_PATH with the ordinary find_* commands
-# and never require PkgConfig there.
+# libffi discovery.
 #
-# A prebuilt Windows libffi carries no architecture marker that find_library
-# inspects, so an x64 package is accepted without complaint by an x86 build.
-# The mismatch then surfaces only when the first consumer executable links, as
-# a wall of unresolved __imp__ffi_* externals.  Probe the candidate with a real
+# Every platform accepts an explicitly given
+#
+#   -DLIBFFI_INCLUDE_DIR=<dir> -DLIBFFI_LIBRARY=<file>
+#
+# pair.  It is used verbatim and is never replaced by an automatically
+# discovered copy, so a deliberate choice always wins.  On Windows that pair is
+# the only mechanism: the nmake build (build-cmake-vs2026-nmake-release.bat)
+# has no pkg-config, so the two variables are normally filled in by
+# find_path/find_library from CMAKE_PREFIX_PATH and PkgConfig is never
+# required there.
+#
+# On Unix pkg-config remains the usual answer, but it is no longer the only
+# one.  The search order is: the explicit pair above, a libffi CMake package,
+# pkg-config, and finally a plain find_path/find_library sweep.  A libffi built
+# by hand into its own prefix commonly installs neither a CMake package nor a
+# .pc file, and is now buildable against with
+#
+#   cmake -S src -B build -DLIBFFI_INCLUDE_DIR=/opt/libffi/include \
+#                         -DLIBFFI_LIBRARY=/opt/libffi/lib/libffi.a
+#
+# A prebuilt libffi carries no architecture marker that find_library inspects,
+# so an x64 package is accepted without complaint by an x86 build.  The
+# mismatch then surfaces only when the first consumer executable links, as a
+# wall of unresolved __imp__ffi_* externals.  Probe the candidate with a real
 # link before committing to it, so the failure is reported here with a usable
-# explanation instead of by the linker.
-if(UCL_LIBFFI AND WIN32)
-    find_path(LIBFFI_INCLUDE_DIR NAMES ffi.h)
-    find_library(LIBFFI_LIBRARY NAMES ffi libffi)
-    if(LIBFFI_INCLUDE_DIR AND LIBFFI_LIBRARY)
-        include(CheckCXXSourceCompiles)
-        set(CMAKE_REQUIRED_INCLUDES "${LIBFFI_INCLUDE_DIR}")
-        set(CMAKE_REQUIRED_LIBRARIES "${LIBFFI_LIBRARY}")
-        check_cxx_source_compiles("
+# explanation instead of by the linker.  The probe result is cached, and
+# re-tested whenever the candidate itself changes.
+macro(underc_probe_libffi probe_var probe_includes probe_libraries)
+    if(NOT "${probe_includes}|${probe_libraries}" STREQUAL "${UNDERC_LIBFFI_PROBED_CANDIDATE}")
+        unset(${probe_var} CACHE)
+        set(UNDERC_LIBFFI_PROBED_CANDIDATE "${probe_includes}|${probe_libraries}"
+            CACHE INTERNAL "libffi candidate last link-probed")
+    endif()
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_INCLUDES ${probe_includes})
+    set(CMAKE_REQUIRED_LIBRARIES ${probe_libraries})
+    check_cxx_source_compiles("
 #include <ffi.h>
 int main() {
     ffi_cif cif;
@@ -165,9 +185,53 @@ int main() {
     ffi_prep_cif(&cif, FFI_DEFAULT_ABI, 1, &ffi_type_sint32, args);
     return 0;
 }
-" UNDERC_LIBFFI_LINKS)
-        unset(CMAKE_REQUIRED_INCLUDES)
-        unset(CMAKE_REQUIRED_LIBRARIES)
+" ${probe_var})
+    unset(CMAKE_REQUIRED_INCLUDES)
+    unset(CMAKE_REQUIRED_LIBRARIES)
+endmacro()
+
+# An imported target from a libffi CMake package is reduced to its own file and
+# include directory.  underc is an installed, exported library: an imported
+# target name recorded in its link interface does not exist in a consumer's
+# project, and the consumer then fails with "cannot find -lsome::target".
+function(underc_imported_library_location target out_location out_includes)
+    set(location "")
+    foreach(property IMPORTED_LOCATION IMPORTED_LOCATION_RELEASE
+            IMPORTED_LOCATION_NOCONFIG IMPORTED_LOCATION_RELWITHDEBINFO
+            IMPORTED_LOCATION_MINSIZEREL IMPORTED_LOCATION_DEBUG)
+        get_target_property(candidate ${target} ${property})
+        if(candidate)
+            set(location "${candidate}")
+            break()
+        endif()
+    endforeach()
+    get_target_property(includes ${target} INTERFACE_INCLUDE_DIRECTORIES)
+    if(NOT includes)
+        set(includes "")
+    endif()
+    set(${out_location} "${location}" PARENT_SCOPE)
+    set(${out_includes} "${includes}" PARENT_SCOPE)
+endfunction()
+
+set(UNDERC_LIBFFI_INCLUDE_DIRS "")
+set(UNDERC_LIBFFI_LINK_LIBRARIES "")
+# Half of the pair is never enough, and silently falling back to a discovered
+# libffi would ignore the half that was given.  (On Windows find_path and
+# find_library fill in whichever half is missing, which is their documented
+# job there, so this applies to the Unix search only.)
+if(UCL_LIBFFI AND (LIBFFI_INCLUDE_DIR OR LIBFFI_LIBRARY) AND NOT WIN32)
+    if(NOT LIBFFI_INCLUDE_DIR OR NOT LIBFFI_LIBRARY)
+        message(FATAL_ERROR
+            "LIBFFI_INCLUDE_DIR and LIBFFI_LIBRARY must be given together.  "
+            "LIBFFI_INCLUDE_DIR='${LIBFFI_INCLUDE_DIR}', "
+            "LIBFFI_LIBRARY='${LIBFFI_LIBRARY}'.")
+    endif()
+endif()
+if(UCL_LIBFFI AND WIN32)
+    find_path(LIBFFI_INCLUDE_DIR NAMES ffi.h)
+    find_library(LIBFFI_LIBRARY NAMES ffi libffi)
+    if(LIBFFI_INCLUDE_DIR AND LIBFFI_LIBRARY)
+        underc_probe_libffi(UNDERC_LIBFFI_LINKS "${LIBFFI_INCLUDE_DIR}" "${LIBFFI_LIBRARY}")
     else()
         set(UNDERC_LIBFFI_LINKS FALSE)
     endif()
@@ -178,22 +242,108 @@ int main() {
             set(UNDERC_LIBFFI_PROBLEM "no libffi was found")
         endif()
         if(UNDERC_HOST_BITS EQUAL 64)
-            message(FATAL_ERROR "UCL_LIBFFI=ON but ${UNDERC_LIBFFI_PROBLEM}.  A 64-bit Windows build has no built-in native dispatcher to fall back on.  Point CMAKE_PREFIX_PATH at a libffi built for the same architecture as the compiler in this environment.")
+            message(FATAL_ERROR "UCL_LIBFFI=ON but ${UNDERC_LIBFFI_PROBLEM}.  A 64-bit Windows build has no built-in native dispatcher to fall back on.  Point CMAKE_PREFIX_PATH at a libffi built for the same architecture as the compiler in this environment, or name it with -DLIBFFI_INCLUDE_DIR and -DLIBFFI_LIBRARY.")
         endif()
         message(WARNING "UCL_LIBFFI=ON but ${UNDERC_LIBFFI_PROBLEM}.  Falling back to the built-in 32-bit native dispatcher.  Variadic natives and by-value aggregate arguments are unavailable in that mode; point CMAKE_PREFIX_PATH at a matching libffi to restore them.")
         set(UCL_LIBFFI OFF)
+    else()
+        set(UNDERC_LIBFFI_INCLUDE_DIRS "${LIBFFI_INCLUDE_DIR}")
+        set(UNDERC_LIBFFI_LINK_LIBRARIES "${LIBFFI_LIBRARY}")
+        message(STATUS "UnderC: libffi from ${LIBFFI_LIBRARY}")
     endif()
+elseif(UCL_LIBFFI)
+    set(UNDERC_LIBFFI_ORIGIN "")
+    if(LIBFFI_INCLUDE_DIR AND LIBFFI_LIBRARY)
+        set(UNDERC_LIBFFI_INCLUDE_DIRS "${LIBFFI_INCLUDE_DIR}")
+        set(UNDERC_LIBFFI_LINK_LIBRARIES "${LIBFFI_LIBRARY}")
+        set(UNDERC_LIBFFI_ORIGIN "${LIBFFI_LIBRARY} (given as LIBFFI_INCLUDE_DIR/LIBFFI_LIBRARY)")
+    endif()
+    # A CMake package, if libffi was built with one (see
+    # github.com/mathematechde/libffi).  Its imported target is reduced to a
+    # plain file so the underc export stays usable by consumers.
+    if(NOT UNDERC_LIBFFI_ORIGIN)
+        # Package name and target name both vary between libffi CMake ports,
+        # so try the spellings that are actually in use rather than one.
+        find_package(libffi CONFIG QUIET)
+        if(NOT libffi_FOUND)
+            find_package(ffi CONFIG QUIET)
+        endif()
+        foreach(UNDERC_LIBFFI_TARGET libffi::libffi libffi::ffi ffi::ffi ffi::libffi libffi ffi)
+            if(TARGET ${UNDERC_LIBFFI_TARGET})
+                underc_imported_library_location(${UNDERC_LIBFFI_TARGET}
+                    UNDERC_LIBFFI_TARGET_FILE UNDERC_LIBFFI_TARGET_INCLUDES)
+                set(UNDERC_LIBFFI_INCLUDE_DIRS "${UNDERC_LIBFFI_TARGET_INCLUDES}")
+                if(UNDERC_LIBFFI_TARGET_FILE)
+                    set(UNDERC_LIBFFI_LINK_LIBRARIES "${UNDERC_LIBFFI_TARGET_FILE}")
+                    set(UNDERC_LIBFFI_ORIGIN "${UNDERC_LIBFFI_TARGET_FILE} (CMake package libffi)")
+                else()
+                    set(UNDERC_LIBFFI_LINK_LIBRARIES ${UNDERC_LIBFFI_TARGET})
+                    set(UNDERC_LIBFFI_ORIGIN "CMake package target ${UNDERC_LIBFFI_TARGET}")
+                endif()
+                break()
+            endif()
+        endforeach()
+    endif()
+    # pkg-config.  The module's own libraries are taken as absolute file paths
+    # for the same reason: PkgConfig::<name> is an imported target that does
+    # not exist in an installed consumer's project.
+    if(NOT UNDERC_LIBFFI_ORIGIN)
+        find_package(PkgConfig QUIET)
+        if(PKG_CONFIG_FOUND)
+            pkg_check_modules(UNDERC_PC_LIBFFI QUIET libffi)
+            if(UNDERC_PC_LIBFFI_FOUND)
+                set(UNDERC_LIBFFI_INCLUDE_DIRS ${UNDERC_PC_LIBFFI_INCLUDE_DIRS})
+                if(UNDERC_PC_LIBFFI_LINK_LIBRARIES)
+                    set(UNDERC_LIBFFI_LINK_LIBRARIES ${UNDERC_PC_LIBFFI_LINK_LIBRARIES})
+                else()
+                    set(UNDERC_LIBFFI_LINK_LIBRARIES ${UNDERC_PC_LIBFFI_LIBRARIES})
+                    foreach(UNDERC_LIBFFI_DIR IN LISTS UNDERC_PC_LIBFFI_LIBRARY_DIRS)
+                        list(APPEND UNDERC_LIBFFI_LINK_LIBRARIES "-L${UNDERC_LIBFFI_DIR}")
+                    endforeach()
+                endif()
+                set(UNDERC_LIBFFI_ORIGIN "${UNDERC_LIBFFI_LINK_LIBRARIES} (pkg-config libffi ${UNDERC_PC_LIBFFI_VERSION})")
+            endif()
+        endif()
+    endif()
+    # Last resort: the ordinary find_* sweep, which also honours
+    # CMAKE_PREFIX_PATH.  This fills the same LIBFFI_INCLUDE_DIR and
+    # LIBFFI_LIBRARY cache entries the caller may set by hand.
+    if(NOT UNDERC_LIBFFI_ORIGIN)
+        find_path(LIBFFI_INCLUDE_DIR NAMES ffi.h)
+        find_library(LIBFFI_LIBRARY NAMES ffi libffi)
+        if(LIBFFI_INCLUDE_DIR AND LIBFFI_LIBRARY)
+            set(UNDERC_LIBFFI_INCLUDE_DIRS "${LIBFFI_INCLUDE_DIR}")
+            set(UNDERC_LIBFFI_LINK_LIBRARIES "${LIBFFI_LIBRARY}")
+            set(UNDERC_LIBFFI_ORIGIN "${LIBFFI_LIBRARY} (found by find_library)")
+        endif()
+    endif()
+    if(NOT UNDERC_LIBFFI_ORIGIN)
+        message(FATAL_ERROR
+            "UCL_LIBFFI=ON but no libffi was found: no libffi CMake package, no "
+            "pkg-config module, and no ffi.h/libffi on the default search "
+            "paths.  Name an existing libffi explicitly with "
+            "-DLIBFFI_INCLUDE_DIR=<dir> -DLIBFFI_LIBRARY=<file>, add its "
+            "prefix to CMAKE_PREFIX_PATH, or configure with -DUCL_LIBFFI=OFF "
+            "to use the built-in native dispatcher where one exists.")
+    endif()
+    underc_probe_libffi(UNDERC_LIBFFI_LINKS
+        "${UNDERC_LIBFFI_INCLUDE_DIRS}" "${UNDERC_LIBFFI_LINK_LIBRARIES}")
+    if(NOT UNDERC_LIBFFI_LINKS)
+        message(FATAL_ERROR
+            "UCL_LIBFFI=ON and libffi was located (${UNDERC_LIBFFI_ORIGIN}), "
+            "but a program using it cannot be compiled and linked by this "
+            "toolchain, which targets ${UNDERC_HOST_BITS}-bit code.  See "
+            "${CMAKE_BINARY_DIR}/CMakeFiles/CMakeError.log, and name a "
+            "matching libffi with -DLIBFFI_INCLUDE_DIR and -DLIBFFI_LIBRARY.")
+    endif()
+    message(STATUS "UnderC: libffi from ${UNDERC_LIBFFI_ORIGIN}")
 endif()
 if(UCL_LIBFFI)
     target_compile_definitions(underc PRIVATE UCL_LIBFFI=1)
-    if(WIN32)
-        target_include_directories(underc PRIVATE "${LIBFFI_INCLUDE_DIR}")
-        target_link_libraries(underc PUBLIC "${LIBFFI_LIBRARY}")
-    else()
-        find_package(PkgConfig REQUIRED)
-        pkg_check_modules(LIBFFI REQUIRED IMPORTED_TARGET libffi)
-        target_link_libraries(underc PUBLIC PkgConfig::LIBFFI)
+    if(UNDERC_LIBFFI_INCLUDE_DIRS)
+        target_include_directories(underc PRIVATE ${UNDERC_LIBFFI_INCLUDE_DIRS})
     endif()
+    target_link_libraries(underc PUBLIC ${UNDERC_LIBFFI_LINK_LIBRARIES})
 endif()
 if(UCL_DISABLE_NATIVE_ABI)
     target_compile_definitions(underc PRIVATE UCL_DISABLE_NATIVE_ABI=1)
@@ -307,7 +457,7 @@ if(BUILD_TESTING)
         PASS_REGULAR_EXPRESSION "basename-handling-ok" TIMEOUT 15)
     add_test(NAME public-header-layout COMMAND underc-public-headers-test)
     set_tests_properties(public-header-layout PROPERTIES
-        PASS_REGULAR_EXPRESSION "public-header-layout=1.5.3" TIMEOUT 15)
+        PASS_REGULAR_EXPRESSION "public-header-layout=1.5.4" TIMEOUT 15)
     add_test(NAME host-abi-width COMMAND underc-host-abi-width-test)
     set_tests_properties(host-abi-width PROPERTIES
         PASS_REGULAR_EXPRESSION "host-abi-width=${UNDERC_HOST_BITS}" TIMEOUT 15)
@@ -379,6 +529,41 @@ if(BUILD_TESTING)
             "${UNDERC_TEST_ROOT}/examples/uccalc.cpp" "2 * (3 + 4)")
         set_tests_properties(example-uccalc PROPERTIES
             ENVIRONMENT "UC_HOME=${UNDERC_TEST_ROOT}" PASS_REGULAR_EXPRESSION "14" TIMEOUT 15)
+        # *add 1.5.4 hand-named libffi paths - see VERSIONS.md.  Configures a
+        # throwaway build tree with pkg-config disabled and libffi given as
+        # -DLIBFFI_INCLUDE_DIR/-DLIBFFI_LIBRARY, which is the only mechanism
+        # left on a host whose libffi has neither a CMake package nor a .pc
+        # file.  Needs concrete paths, so it is skipped when libffi came from a
+        # CMake package that exposes only an imported target.
+        if(UNIX AND UNDERC_LIBFFI_LINK_LIBRARIES)
+            list(GET UNDERC_LIBFFI_LINK_LIBRARIES 0 UNDERC_LIBFFI_TEST_LIBRARY)
+            set(UNDERC_LIBFFI_TEST_INCLUDE_DIR "")
+            foreach(UNDERC_LIBFFI_DIR IN LISTS UNDERC_LIBFFI_INCLUDE_DIRS)
+                if(EXISTS "${UNDERC_LIBFFI_DIR}/ffi.h")
+                    set(UNDERC_LIBFFI_TEST_INCLUDE_DIR "${UNDERC_LIBFFI_DIR}")
+                    break()
+                endif()
+            endforeach()
+            if(NOT UNDERC_LIBFFI_TEST_INCLUDE_DIR)
+                # pkg-config reports no -I at all when ffi.h sits in a default
+                # include directory.
+                find_path(UNDERC_LIBFFI_HEADER_DIR NAMES ffi.h)
+                set(UNDERC_LIBFFI_TEST_INCLUDE_DIR "${UNDERC_LIBFFI_HEADER_DIR}")
+            endif()
+            if(EXISTS "${UNDERC_LIBFFI_TEST_LIBRARY}"
+                    AND EXISTS "${UNDERC_LIBFFI_TEST_INCLUDE_DIR}/ffi.h")
+                add_test(NAME libffi-manual-paths
+                    COMMAND "${CMAKE_COMMAND}"
+                        "-DUNDERC_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                        "-DLIBFFI_INCLUDE_DIR=${UNDERC_LIBFFI_TEST_INCLUDE_DIR}"
+                        "-DLIBFFI_LIBRARY=${UNDERC_LIBFFI_TEST_LIBRARY}"
+                        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/libffi-manual-paths"
+                        "-DGENERATOR=${CMAKE_GENERATOR}"
+                        "-DCXX_COMPILER=${CMAKE_CXX_COMPILER}"
+                        -P "${UNDERC_TEST_ROOT}/regressiontests/libffi-manual-paths.cmake")
+                set_tests_properties(libffi-manual-paths PROPERTIES TIMEOUT 300)
+            endif()
+        endif()
     endif()
     underc_add_regression(grammar-bitwise-or bitwise-or.c)
     underc_add_regression(grammar-bitwise-precedence bitwise-precedence.cpp)

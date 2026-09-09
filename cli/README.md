@@ -28,6 +28,14 @@ The CLI locates `FindUnderc.cmake` through either `CMAKE_PREFIX_PATH` or
 installation is enough. To build against a shared-library interpreter, configure
 the library with `-DUCL_SHARED=ON` and the CLI with `-DUCC_SHARED=ON`.
 
+The CLI has no dependency discovery of its own: the installed
+`UndercTargets.cmake` names the interpreter's libffi, readline, and curses by
+file path, so no `pkg-config` is needed here. An interpreter installed by a
+release before 1.5.4 recorded libffi on Unix as the imported target
+`PkgConfig::LIBFFI`, which does not exist in this project and fails the link
+with `cannot find -lPkgConfig::LIBFFI`; reinstalling the interpreter clears
+that.
+
 `UCC_` options and macros belong to the command-line program; `UCC_SHARED`
 selects the shared-library link.
 

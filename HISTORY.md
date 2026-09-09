@@ -3,6 +3,81 @@
 This file records modernization work performed on this source tree. Consolidated
 release information is in `VERSIONS.md`.
 
+## UnderC 1.5.4 libffi discovery and a self-contained CMake export (2026-09-09)
+
+libffi no longer has to be described by pkg-config on Unix, and the installed
+CMake package no longer hands consumers a dependency they cannot resolve.
+
+Naming libffi by hand:
+
+- `-DLIBFFI_INCLUDE_DIR=<dir>` and `-DLIBFFI_LIBRARY=<file>`, previously
+  meaningful only on Windows, are honoured on every platform. The pair is
+  checked before any automatic discovery runs and is never replaced by a system
+  copy, so
+
+  ```sh
+  cmake -S src -B build -DLIBFFI_INCLUDE_DIR=/opt/libffi/include \
+                        -DLIBFFI_LIBRARY=/opt/libffi/lib/libffi.a
+  ```
+
+  configures on a host whose libffi ships neither a CMake package nor a `.pc`
+  file. Passing only one of the two is a configuration error naming both.
+
+Unix discovery order:
+
+- `src/CMakeLists.txt` no longer runs `find_package(PkgConfig REQUIRED)` plus
+  `pkg_check_modules(LIBFFI REQUIRED IMPORTED_TARGET libffi)` unconditionally.
+  The order is now: the explicit variables, a libffi CMake package
+  (`find_package(libffi CONFIG)`, then `find_package(ffi CONFIG)`, and the
+  target spellings `libffi::libffi`, `libffi::ffi`, `ffi::ffi`, `ffi::libffi`,
+  `libffi`, `ffi`), pkg-config, and a plain `find_path`/`find_library` sweep
+  that also honours `CMAKE_PREFIX_PATH`.
+- When every mechanism comes up empty the build stops with a message that
+  lists them and the variables to set, instead of the previous failure inside
+  `find_package(PkgConfig REQUIRED)`.
+- The Windows branch is unchanged in behaviour. Its link probe was factored
+  into the `underc_probe_libffi` macro, which both platforms now use, and which
+  re-runs the cached probe whenever the candidate include directory or library
+  changes.
+
+Export correctness:
+
+- `underc` linked `PkgConfig::LIBFFI` as a `PUBLIC` dependency. `install(EXPORT)`
+  wrote that imported target name straight into `UndercTargets.cmake`, where it
+  means nothing to a consumer's project, so `ucc`, `venv`, and `embed` all
+  failed against an installed interpreter on Unix with
+  `/usr/bin/ld: cannot find -lPkgConfig::LIBFFI`.
+- libffi is now always reduced to a plain library file before it is linked:
+  pkg-config results are taken from `<prefix>_LINK_LIBRARIES`, and an imported
+  target from a libffi CMake package is reduced by
+  `underc_imported_library_location()` to its `IMPORTED_LOCATION` and
+  `INTERFACE_INCLUDE_DIRECTORIES`. The installed export now records
+  `/usr/lib/libffi.so` (or whichever file was used), and consumers link without
+  needing pkg-config themselves.
+
+Tests and documentation:
+
+- Added `regressiontests/libffi-manual-paths.cmake`, registered as the
+  `libffi-manual-paths` test on Unix. It configures a throwaway build tree of
+  `src/` with `-DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=ON` and libffi named by
+  hand, and requires the configure step to succeed and to report exactly the
+  library it was given.
+- `README.md` gained a "Finding libffi" section covering the search order, the
+  explicit variables, and the file-path export; `cli/README.md` and
+  `venv/README.md` note that a consumer needs no pkg-config and what an
+  interpreter installed before 1.5.4 fails with.
+- Bumped the library, CLI, embed, and venv CMake projects to 1.5.4 and the
+  `public-header-layout` regression's expected version string. On this Linux
+  host 52 of 53 tests pass; `ucri-self-import` fails here both before and after
+  this change.
+
+Unrelated build fix found while verifying the consumers:
+
+- `venv/src/cmdline.c` called `free()` with no `<stdlib.h>` in scope, which
+  current GCC rejects outright (`implicit declaration of function 'free'`)
+  rather than warning about. The include was added; `venv` builds against an
+  installed 1.5.4 interpreter on Linux again.
+
 ## UnderC 1.5.3 compiled-in help, resource relocation, runtime path API (2026-09-07)
 
 The interpreter no longer reads any text resource file at run time, the

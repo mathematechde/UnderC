@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(UnderC_CLI VERSION 1.5.3 LANGUAGES CXX)
+project(UnderC_CLI VERSION 1.5.4 LANGUAGES CXX)
 include(GNUInstallDirs)
 option(UCC_SHARED "Link the CLI to a shared UnderC installation" OFF)
 # The interpreter installs FindUnderc.cmake and UndercTargets.cmake under

@@ -3,6 +3,38 @@
 Each entry summarizes the maintained feature delta. Historical version entries
 from the complete earlier history are retained below.
 
+## 1.5.4 — 2026-09-09
+
+- Made libffi discovery on Unix match Windows: `-DLIBFFI_INCLUDE_DIR=<dir>`
+  and `-DLIBFFI_LIBRARY=<file>` now name libffi directly on every platform.
+  The pair is honoured ahead of any automatic search, so a hand-built libffi
+  (`-DLIBFFI_INCLUDE_DIR=/opt/libffi/include
+  -DLIBFFI_LIBRARY=/opt/libffi/lib/libffi.a`) builds on a host where libffi has
+  neither a CMake package nor a pkg-config file. Giving only one of the two is
+  a configuration error.
+- Replaced the unconditional `find_package(PkgConfig REQUIRED)` on Unix with an
+  ordered search: the explicit pair, a libffi CMake package
+  (`find_package(libffi CONFIG)` or `find_package(ffi CONFIG)`), pkg-config,
+  then plain `find_path`/`find_library`. pkg-config is no longer required to configure the
+  library, and a build with none of the mechanisms available reports what to
+  set instead of failing inside PkgConfig.
+- Link-probed the chosen libffi on Unix as well as Windows, so an unusable
+  candidate is reported during configuration; the probe is re-run whenever the
+  candidate changes.
+- Fixed the installed CMake export on Unix. `underc` linked the imported target
+  `PkgConfig::LIBFFI` publicly, which was written verbatim into
+  `UndercTargets.cmake`, and every consumer of an installed interpreter —
+  `ucc`, `venv`, `embed` — failed with `cannot find -lPkgConfig::LIBFFI`.
+  libffi is now recorded as its library file, and imported targets from a
+  libffi CMake package are reduced to the same.
+- Added the `libffi-manual-paths` regression: it configures a throwaway build
+  tree with `find_package(PkgConfig)` disabled and libffi named by hand, and
+  requires the configuration to succeed and to use exactly the given library.
+- Added the missing `<stdlib.h>` to `venv/src/cmdline.c`, whose `free()` calls
+  were an implicit declaration that current GCC rejects as an error.
+- Bumped the library, CLI, embed, and venv projects to 1.5.4 and updated the
+  `public-header-layout` regression and the current-feature documentation.
+
 ## 1.5.3 — 2026-09-07
 
 - Compiled the `#help` and `--help` text into the library. CMake generates

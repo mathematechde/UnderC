@@ -6,6 +6,7 @@ _ZN6XTraceC2Eb
 _ZTI6XTrace
 _ZTS6XTrace
 _ZTV6XTrace
+uc_eval_method
 _Z10wrap_XTypeP4Type
 _Z11wrap_XClassP5Class
 _Z11wrap_XEntryP5Entry
@@ -19,12 +20,6 @@ _ZN12XTemplateFun17match_instantiateERK5listxIP5XTypeE
 _ZN12XTemplateFun4nameEv
 _ZN12XTemplateFunC1EP13TemplateEntry
 _ZN12XTemplateFunC2EP13TemplateEntry
-_ZN5XType10str_to_valEPKcPv
-_ZN5XType4typeEv
-_ZN5XType8from_strEPKc
-_ZN5XType8typelistEPS_z
-_ZN5XTypeC1EP4Type
-_ZN5XTypeC2EP4Type
 _ZN5listxIP5XTypeED1Ev
 _ZN5listxIP5XTypeED2Ev
 _ZN5listxIP6XClassED1Ev
@@ -35,6 +30,12 @@ _ZN5listxIP7XModuleED1Ev
 _ZN5listxIP7XModuleED2Ev
 _ZN5listxIP9XFunctionED1Ev
 _ZN5listxIP9XFunctionED2Ev
+_ZN5XType10str_to_valEPKcPv
+_ZN5XType4typeEv
+_ZN5XType8from_strEPKc
+_ZN5XType8typelistEPS_z
+_ZN5XTypeC1EP4Type
+_ZN5XTypeC2EP4Type
 _ZN6XClass10base_classEv
 _ZN6XClass12get_class_ofEPv
 _ZN6XClass12get_templateEv
@@ -97,6 +98,8 @@ _ZN7XNTableC2EP10NamedTable
 _ZN9XFunction10ip_to_lineEPv
 _ZN9XFunction11set_tracingEb
 _ZN9XFunction12lookup_localEPKc
+_ZN9XFunction14instruction_atEmP16XInstructionInfo
+_ZN9XFunction17instruction_countEv
 _ZN9XFunction3funEv
 _ZN9XFunction4argsEv
 _ZN9XFunction4evalEPvS0_S0_
@@ -144,5 +147,4 @@ _ZTS6XClass
 _ZTS7XNTable
 _ZTV6XClass
 _ZTV7XNTable
-uc_eval_method
 uc_eval_method_args

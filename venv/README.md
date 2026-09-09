@@ -228,6 +228,13 @@ The interpreter is either on the prefix path or it is not. venv links
 `Underc::underc` and forces the **dynamic CRT** (`/MD`, matching the shipped
 `underc.lib`).
 
+The installed `UndercTargets.cmake` names the interpreter's own dependencies —
+libffi in particular — by file path, so venv needs no `pkg-config` of its own.
+An interpreter installed by a release before 1.5.4 recorded libffi on Unix as
+the imported target `PkgConfig::LIBFFI`, which does not exist in this project;
+the link then fails with `cannot find -lPkgConfig::LIBFFI` and reinstalling the
+interpreter clears it.
+
 `ffi.dll` is not bundled — like `ucc`, `venv.exe` needs it on `PATH` at run
 time on Windows.
 
